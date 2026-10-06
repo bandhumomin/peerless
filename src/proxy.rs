@@ -61,22 +61,24 @@ pub async fn forward_request(
 
     init.with_headers(h);
 
-    let body_bytes = match axum::body::to_bytes(body, 64 * 1024 * 1024).await {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Failed to read request body: {e}"),
-            )
-                .into_response();
-        }
-    };
+    if *method != Method::GET && *method != Method::HEAD {
+        let body_bytes = match axum::body::to_bytes(body, 64 * 1024 * 1024).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to read request body: {e}"),
+                )
+                    .into_response();
+            }
+        };
 
-    if !body_bytes.is_empty() {
-        #[cfg(target_arch = "wasm32")]
-        {
-            let array = worker::js_sys::Uint8Array::from(body_bytes.as_ref());
-            init.with_body(Some(array.into()));
+        if !body_bytes.is_empty() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let array = worker::js_sys::Uint8Array::from(body_bytes.as_ref());
+                init.with_body(Some(array.into()));
+            }
         }
     }
 
