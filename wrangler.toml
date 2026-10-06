@@ -1,6 +1,7 @@
-name = "peerless-worker"
+name = "peerless"
 main = "build/index.js"
 compatibility_date = "2026-10-06"
+compatibility_flags = ["nodejs_compat"]
 
 [build]
 command = "worker-build --release"

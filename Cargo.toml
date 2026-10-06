@@ -1,14 +1,18 @@
 [package]
-name = "peerless-worker"
+name = "peerless"
 version = "0.1.0"
 edition = "2021"
 authors = ["hitarashi <sayeed205@gmail.com>"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 worker = { version = "0.8", features = ['http', 'axum'] }
 worker-macros = { version = "0.8", features = ['http'] }
-axum = { version = "0.8", default-features = false }
+axum = { version = "0.8", default-features = false, features = ["query"] }
 tower-service = "0.3.3"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
