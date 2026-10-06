@@ -4,11 +4,10 @@ mod stream;
 
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
-use axum::response::Response;
+use axum::extract::{Request as AxumRequest, State};
+use axum::response::Response as AxumResponse;
 use axum::routing::get;
 use axum::Router;
-use tower_service::Service;
 use worker::*;
 
 pub use state::AppState;
@@ -26,8 +25,8 @@ pub fn router(state: Arc<AppState>) -> Router {
 #[worker::send]
 async fn fallback_handler(
     State(state): State<Arc<AppState>>,
-    req: Request,
-) -> Response {
+    req: AxumRequest,
+) -> AxumResponse {
     let uri = req.uri().clone();
     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or(uri.path());
     let target_url = format!("{}{path_and_query}", state.upstream_url);
@@ -38,11 +37,17 @@ async fn fallback_handler(
 
 #[event(fetch)]
 async fn fetch(
-    req: HttpRequest,
+    req: Request,
     env: Env,
     _ctx: Context,
-) -> Result<axum::http::Response<axum::body::Body>> {
-    let state = Arc::new(AppState::from_env(&env));
-    let mut app = router(state);
-    Ok(app.call(req).await?)
+) -> Result<Response> {
+    let state = AppState::from_env(&env);
+    let path = req.path();
+
+    if path.starts_with("/api/v1/tracks/") && path.ends_with("/stream") {
+        return stream::handle_native_stream(req, &state).await;
+    }
+
+    proxy::forward_native(req, &state).await
 }
+

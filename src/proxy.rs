@@ -101,3 +101,60 @@ pub async fn forward_request(
             .into_response(),
     }
 }
+
+pub async fn forward_native(
+    mut req: Request,
+    state: &crate::state::AppState,
+) -> worker::Result<worker::Response> {
+    if state.upstream_url.is_empty() || state.upstream_url.starts_with('/') {
+        return worker::Response::error("UPSTREAM_URL is not configured in Cloudflare environment", 502);
+    }
+
+    let url = req.url()?;
+    let path_and_query = match url.query() {
+        Some(q) => format!("{}?{}", url.path(), q),
+        None => url.path().to_string(),
+    };
+    let target_url = format!("{}{path_and_query}", state.upstream_url);
+
+    let mut init = RequestInit::new();
+    init.with_method(req.method());
+
+    let headers = Headers::new();
+    let mut is_websocket = false;
+
+    for (k, v) in req.headers().entries() {
+        let key = k.as_str();
+        if key.eq_ignore_ascii_case("upgrade") {
+            if v.to_ascii_lowercase().contains("websocket") {
+                is_websocket = true;
+            }
+            let _ = headers.append(key, &v);
+        } else if !key.eq_ignore_ascii_case("host") && !key.eq_ignore_ascii_case("connection") {
+            let _ = headers.append(key, &v);
+        }
+    }
+
+    if is_websocket {
+        let _ = headers.set("Connection", "Upgrade");
+    }
+
+    init.with_headers(headers);
+
+    let method = req.method();
+    if method != worker::Method::Get && method != worker::Method::Head {
+        if let Ok(bytes) = req.bytes().await {
+            if !bytes.is_empty() {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let array = worker::js_sys::Uint8Array::from(bytes.as_slice());
+                    init.with_body(Some(array.into()));
+                }
+            }
+        }
+    }
+
+    let upstream_req = Request::new_with_init(&target_url, &init)?;
+    Fetch::Request(upstream_req).send().await
+}
+
